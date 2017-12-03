@@ -1,0 +1,413 @@
+---
+title: "MA684, Midterm project"
+author: "Yoojin Jung"
+date: "November 30, 2017"
+output: pdf_document
+--- 
+
+This analaysis uses a dataset from the Behavioral Risk Factor Surveillance System (BRFSS). The dataset is the survey data collected in 2010. In this study, I compared the relationship between the behavioral factors and the mental health. The mental health includes stress, depression, and problems with emotions, and it is measured by the number of days during the past 30 days the mental health was not good. As the behavioral factors, I considered exercise and drinking alcohol occasionally and assessed whether these behavioral factors would make the mental health improve or worsen. 
+
+```{r setup, message=FALSE, warning=FALSE, comment=NA, echo=TRUE }
+
+#library(choroplethr)
+#library(choroplethrMaps)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+library(arm)
+library(VGAM)
+library(dplyr)
+library(pscl)
+library(MASS)
+library(usmap)
+theme_set(theme_gray())
+
+## Data file was too big to add even using the command line. So I saved the processed data file and uploaded that file to the GitHub. Please skip the following lines until you see the line dpm <- read.csv("dpm.csv"). The code lines are commented out until that line.
+#
+## Read the input file
+#d <- read.csv("2010.csv", sep=",")
+#
+## Let's filter data with unusable values-
+#d <- subset(d,d$GENHLTH < 6) # remove Don't know/Not sure and Refused entries
+#d <- d[,-c(28,29,30,31,43,44,45,48,49,50,51)]
+#
+## Remove the data with refused or don't know/not sure
+#d <- subset(d, d$PHYSHLTH != 99)
+#d <- subset(d, d$PHYSHLTH != 77)
+#d <- subset(d, d$MENTHLTH != 99)
+#d <- subset(d, d$MENTHLTH != 77)
+#d <- subset(d, d$EDUCA != 9)
+#d <- subset(d, d$EXERANY2 != 9)
+#d <- subset(d, d$EXERANY2 != 7)
+#d <- subset(d, d$SMOKE100 != 9)
+#d <- subset(d, d$SMOKE100 != 7)
+#d <- subset(d, d$MEDCOST != 9)
+#d <- subset(d, d$MEDCOST != 7)
+#d <- subset(d, d$DRNKANY4 != 9)
+#d <- subset(d, d$DRNKANY4 != 7)
+#
+#d <- subset(d,d$AGE > 10) # Filter out data with Age < 10
+#
+## Generate a state name data
+#d.sub1 <- d[,c(1,10)]
+#colnames(d.sub1) <- c("State","Health")
+#state.value <- unique(d.sub1$State)
+#
+#state.name <- data.frame(Value=state.value,
+#                         name=c("Alabama","Alaska","Arizona","Arkansas","California",
+#                                "Colorado","Connecticut","Delaware","District of Columbia",
+#                                "Florida","Georgia","Hawaii","Idaho","Illinois",
+#                                "Indiana","Iowa","Kansas","Kentucky","Louisiana",
+#                                "Maine","Maryland","Massachusetts","Michigan","Minnesota",
+#                                "Mississippi","Missouri","Montana","Nebraska","Nevada",
+#                                "New Hampshire","New Jersey","New Mexico","New York",
+#                                "North Carolina","North Dakota","Ohio","Oklahoma","Oregon",
+#                                "Pennsylvania","Rhode Island","South Carolina","South Dakota",
+#                                "Tennessee","Texas","Utah","Vermont","Virginia","Washington",
+#                                "West Virginia","Wisconsin","Wyoming","Guam","Puerto Rico",
+#                                "Virgin Islands"))
+#
+#itotal <- nrow(d.sub1)
+#jtotal <- nrow(state.name)
+#for (i in 1:itotal) {
+#  for (j in 1:jtotal) {
+#    if(d.sub1$State[i] == state.name$Value[j]) {
+#      d.sub1$Location[i] <- as.character(state.name$name[j])
+#      break
+#    }
+#  }
+#}
+#
+## Save the selected columns in a separate dataset
+#d.sub1$Education <- as.factor(d$EDUCA)
+#d.sub1$Age <- d$AGE
+#d.sub1$Income <- as.factor(d$INCOME2)
+#d.sub1$Employment <- as.factor(d$EMPLOY)
+#d.sub1$Gender <- as.factor(d$SEX)
+#d.sub1$Exercise <- as.factor(d$EXERANY2)
+#d.sub1$Cost <- as.factor(d$MEDCOST)
+#d.sub1$Smoking <- as.factor(d$SMOKE100)
+#d.sub1$Drink <- as.factor(d$DRNKANY4)
+#d.sub1$Race <- as.factor(d$RACE2)
+#
+## Physical and mental health
+#dpm <- d[,c(1,10,11,12)]
+#colnames(dpm) <- c("State","General","Physical","Mental")
+#
+## Add other predictors
+#dpm <- cbind(dpm,d.sub1[,c(seq(3,13))])
+#dpm <- na.omit(dpm)
+#
+## And also convert the value 88 (None) in physical and mental health to zero
+#itotal <- nrow(dpm)
+#for (i in 1:itotal) {
+#  if(dpm$Physical[i] == 88) {dpm$Physical[i] <- 0}
+#  if(dpm$Mental[i] == 88) {dpm$Mental[i] <- 0}
+#}
+#
+## Shift by -1 for yes and no answers to make them be 1 and 0.
+#dpm$Exercise <- as.numeric(dpm$Exercise) -1
+#dpm$Drink <- as.numeric(dpm$Drink) -1
+#dpm$Exercise <- as.factor(dpm$Exercise)
+#dpm$Drink <- as.factor(dpm$Drink)
+#
+## Add a column for individual ID 
+#dpm$ID <- seq(1:nrow(dpm))
+#
+## Delete some unused columns and save the data file
+#dpm <- dpm[,-c(1,11,16)]
+#write.csv(dpm, file = "dpm.csv")
+```
+
+```{r}
+# Read the data file and use for the following analysis. 
+dpm <- read.csv(file = "dpm.csv")
+
+# Mental health score distribution
+ggplot(dpm, aes(x=Mental)) + geom_bar(aes(fill = as.factor(as.character(General)))) + 
+  labs(x="Number of days Mental health not good") + 
+  scale_fill_discrete("General Health",
+                      labels=c("Excellent","Very good","Good","Fair","Poor"))
+
+ggplot(dpm, aes(x=Mental)) + geom_bar(position = "fill", 
+                                        aes(fill = as.factor(as.character(General)))) + 
+  labs(x="Number of days Mental health not good", y="Proportion") + 
+  scale_fill_discrete("General Health",
+                      labels=c("Excellent","Very good","Good","Fair","Poor"))
+
+```
+As shown in the above figures, the data include an excess of zero counts, meaning most of the survey participants felt mentally good. The self-evaluation of the general health clearly reflects the mentally sick days.
+
+```{r}
+# Let's conduct EDA. 
+# Mental health score by education  
+ggplot(dpm, aes(x=Mental)) +
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Education)))) +
+  labs(y="Proportion") +
+  scale_fill_discrete("Education",
+                      labels=c("Never attended school or only Kindergarten",
+                               "Elementary",
+                               "Some high school",
+                               "High school graduate",
+                               "Some college",
+                               "College graduate",
+                               "Refused"))
+
+# Mental health score by income 
+ggplot(dpm, aes(x=Mental)) + 
+  geom_bar(position="fill",aes(fill = as.factor(as.character(Income)))) +
+  labs(y="Proportion") +
+  scale_fill_discrete("Income",
+                      labels=c("Less than $10,000",
+                               "$10,000 to less than $15,000",
+                               "$15,000 to less than $20,000",
+                               "$20,000 to less than $25,000",
+                               "$25,000 to less than $35,000",
+                               "$35,000 to less than $50,000",
+                               "$50,000 to less than $75,000",
+                               "$75,000 or more","Don't know/Not sure","Refused"))
+
+# Mental health score by Employment
+ggplot(dpm, aes(x=Mental)) + 
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Employment)))) +
+  labs(y="Proportion") +
+  scale_fill_discrete("Employment",
+                      labels=c("Employed for wages","Self-employed",
+                               "Out of work for more than 1 year",
+                               "Out of work for less that 1 year",
+                               "Homemaker","Student","Retired","Unable to work","Refused"))
+
+# Mental health score by State
+ggplot(dpm, aes(x=Mental)) +
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Location)))) + 
+  labs(y="Proportion") + coord_flip()
+
+# Mental health score by exercise
+ggplot(dpm, aes(x=Mental)) +
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Exercise)))) +
+  labs(y="Proportion") + scale_fill_discrete("Exercise",labels=c("Yes","No"))
+
+# Mental health score by health care affordability
+ggplot(dpm, aes(x=Mental)) + 
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Cost)))) +
+  labs(y="Proportion") + scale_fill_discrete("Cost",labels=c("Yes","No"))
+
+# Mental health score by drinking
+ggplot(dpm, aes(x=Mental)) + 
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Drink)))) +
+  labs(y="Proportion") + scale_fill_discrete("Drink",labels=c("Yes","No"))
+
+# Exercise by education
+ggplot(dpm, aes(x=Education)) + 
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Exercise)))) +
+  labs(y="Proportion") + scale_fill_discrete("Exercise",labels=c("Yes","No"))
+
+# Health care affordability by education
+ggplot(dpm, aes(x=Education)) +
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Cost)))) +
+  labs(y="Proportion") + scale_fill_discrete("Cost",labels=c("Yes","No"))
+
+# Drinking by education
+ggplot(dpm, aes(x=Education)) + 
+  geom_bar(position="fill",aes(fill=as.factor(as.character(Drink)))) +
+  labs(y="Proportion") + scale_fill_discrete("Drink",labels=c("Yes","No"))
+
+```
+
+
+```{r}
+## Start with a simple model, including habit related covariates
+lm.dt1 <- glm(Mental ~ Exercise + Drink, family = poisson(link = "log"), data = dpm)
+summary(lm.dt1)
+plot(fitted(lm.dt1),rstandard(lm.dt1));abline(h=0)
+abline(h=2,lty=3)
+abline(h=-2,lty=3)
+
+yhat <- predict(lm.dt1, type="response")
+z <- (dpm$Mental-yhat)/sqrt(yhat)
+cat("Overdispersion ratio is ", sum(z^2/(df.residual(lm.dt1))), "\n")
+cat ("p-value of overdispersion test is ", pchisq (sum(z^2), df.residual(lm.dt1)), "\n")
+```
+The estimated coefficients are all significant based on the standard error and z value. The intercept term is the prediction if the participant engaged in any physical activities or exercise during the past 30 days and occasionally consumed alcohol. The coefficient of Exercise1 is the expected difference in the mentally sick days if the respondent did not participated in any physical activities or exercise during the past 30 days. The coefficient of Drink1 is the expected difference in the mentally sick days if the respondent did not drink alcohol occaionally. However, the estimated overdispersion factor indicates that the mental health data are overdispersed by a factor of 17, which is much bigger than 1. That is, the model does not fil well. The fitted and residual plot also shows the signs of overdispersion. 
+
+```{r}
+# Let's try an overdispersed Poisson model.
+lm.dt2 <- glm(Mental ~ Exercise + Drink, family = quasipoisson(link = "log"), data = dpm)
+summary.glm(lm.dt2)
+
+plot(fitted(lm.dt2),rstandard(lm.dt2));abline(h=0)
+abline(h=2,lty=3)
+abline(h=-2,lty=3)
+
+```
+The estimates are exactly the same as before, but the new standard errors are bigger than those from the Poisson model. The residual plot reflects this change, and now most of the residuals are within +/- 2SD.
+
+```{r}
+# Let's try a negative binomial model.
+lm.dt2.1 <- glm.nb(Mental ~ Exercise + Drink, data = dpm)
+summary.glm(lm.dt2.1)
+```
+The calculated AIC value of the negative binomial model is much smaller than the AIC value of the poisson model (lm.dt1), indicating lm.dt2.1. is better than lm.dt1.
+
+However, the data include an excess of zeros compared to what's expected under a Poisson model. To check how well the model represents the observed data, I calculated the probability of zero counts estimated by the model. 
+```{r}
+zobs <- dpm$Mental == 0
+obs <- mean(zobs)
+zpoi <- exp(-exp(predict(lm.dt1)))
+poi <- mean(zpoi)
+print(c(obs,poi))
+```
+The Poisson model only predicts 5% would have no sick day, whereas 69% of survey participants reported to have no sick day. Clearly the Poisson model underestimates the probability of zero counts. 
+
+The excess of zero coundt can be explained by two sources: 1) the survey participants are mentally healty and have never had mental health problems and 2) the survey participants are mentally sick but did not have mental health problems during the past 30 days. The former will be always zero, and the latter can be explained by the Poisson distribution. 
+
+```{r}
+# Let's try a zero-inflated Poisson model.
+lm.dt3 <- zeroinfl(Mental ~ Exercise + Drink, data = dpm)
+summary(lm.dt3)
+
+pr <- predict(lm.dt3,type="zero") 
+mu <- predict(lm.dt3,type="count")
+zip <- pr + (1-pr)*exp(-mu) 
+print(c(mean(zip),sd(zip)))
+
+lm.dt3.1 <- zeroinfl(Mental ~ Exercise + Drink, dist = "negbin", data = dpm)
+summary(lm.dt3.1)
+
+vuong(lm.dt2.1, lm.dt3.1)
+
+```
+The Vuong test suggests that the zero-inflated negative binomial model is a significant improvement over a standard negative binomial model.
+
+
+## Multilevel models
+The dataset includes several groups, such as by education, income, and state. Here, I will consider fitting several multilevel models with the grouped data. For multilevel models, I used a subset of the dataset (dpm) to facilitate fitting the multilevel generalized linear models. Based on the zero-inflated negative binomial model above, I assumed most of the survey participants are mentally healty and therefore randomly selected part of the zero counts. The total number of the zero counts included in this subset was determined by the ratio of the zero counts explained by the poisson distribution and the actual obsevation data.  
+```{r}
+# Let's filter zeros and randonly select part of them.
+zeros.dpm <- subset(dpm, dpm$Mental == 0)
+zeros.sub.dpm <- sample_n(zeros.dpm,floor(nrow(zeros.dpm)*poi/obs))
+sub.dpm <- subset(dpm, dpm$Mental != 0)
+sub.dpm <- rbind(sub.dpm,zeros.sub.dpm)
+
+# For the income group, remove the data with refused or don't know/not sure.
+sub.dpm2 <- subset(sub.dpm, sub.dpm$Income != 99)
+sub.dpm2 <- subset(sub.dpm2, sub.dpm2$Income != 77)
+write.csv(sub.dpm2, file = "subdpm2.csv")
+
+# For the state group, select several representative states.
+ggplot(sub.dpm2, aes(x=Location,y=Mental)) + geom_boxplot() + coord_flip()
+
+state.ave <- sub.dpm2 %>%
+  group_by(Location) %>%
+  summarise(ave = mean(Mental))
+
+# Delete the rows for Guam, Puerto Rico, Virgin Islands for plotting purpose
+state.ave <- state.ave[-c(12,41,49),] 
+state.ave$Location <- as.character(state.ave$Location)
+for (i in 1:51) {
+  state.ave$Location[i] <- fips(state.ave$Location[i])
+}
+
+colnames(state.ave)<- c("fips","value")
+state.ave <- data.frame(state.ave)
+plot_usmap(data = state.ave, values = "value") + scale_fill_continuous(name = "ave(Mental)")
+
+# Based on the average values, select District of Columbia, Florida, Massachusetts, North Dakota, Oklahoma, Washington, and West Virginia.
+sub.dpm3 <- subset(sub.dpm2, sub.dpm2$Location == c("District of Columbia",
+                   "Florida","Massachusetts","North Dakota","Oklahoma","Washington",
+                   "West Virginia"))
+write.csv(sub.dpm3, file = "subdpm3.csv")
+```
+
+```{r}
+# Let's compare complete pooling, no pooling, and partial pooling cases.
+# Education
+lm.dt7 <- glm.nb(Mental ~ Exercise + Drink, data = sub.dpm2)
+summary(lm.dt7)
+
+lm.dt7.1 <- glm.nb(Mental ~ Education + Exercise + Drink - 1, data = sub.dpm2)
+summary(lm.dt7.1)
+
+lm.dt7.2 <- glmer(Mental ~ Exercise + Drink + (1|ID) + (1|Education), 
+                  family = poisson(link = "log"), data = sub.dpm2)
+summary(lm.dt7.2)
+
+print(c(AIC(lm.dt7),AIC(lm.dt7.1),AIC(lm.dt7.2)))
+
+par(mfrow=c(1,4))
+plot(lm.dt7,col="blue")
+plot(lm.dt7.1,col="blue")
+
+plot(lm.dt7.2,col="blue")
+qqnorm(resid(lm.dt7.2)) 
+
+cdt7.1 <- data.frame(coef(lm.dt7.1)[1:6],rep(coef(lm.dt7.1)[7],6))
+cdt7.2 <- coef(lm.dt7.2)$Education[,-3]
+colnames(cdt7.1) <- c("Intercept","Slope")
+colnames(cdt7.2) <- c("Intercept","Slope")
+
+```
+lm.dt7: Because of the reduction of the excess zero counts, the predicted value of mentally sick days increased from 1 day to 2 days when the participant engaged in any physical activities or exercise during the past 30 days and occasionally consumed alcohol. The coefficient of Exercise1 is the expected difference in the mentally sick days if the respondent did not participated in any physical activities or exercise during the past 30 days. The coefficient of Drink1 is the expected difference in the mentally sick days if the respondent did not drink alcohol occaionally. 
+
+lm.dt7.1: The effect of education level on the prediction was separately assessed for each education group. This change also affected the coefficients for exercise and drink term. 
+
+lm.dt7.2: The intercepts are in general smaller than those in lm.dt7.1, but the slopes for exercise and drink are greater, therefore increasing the variability of the predictions. 
+
+As shown in AIC value comparison, the multilevel model does not improve the fitting. The residual and quantile plots also show that there are missing parameters that would better explain the observed data. Particularly, significant deviations from linearty of the observations in the Q-Q plot for lm.dt7.2 indicates non-normal residuals.
+
+```{r}
+# Income
+lm.dt8.1 <- glm.nb(Mental ~ Income + Exercise + Drink - 1, data = sub.dpm2)
+summary(lm.dt8.1)
+
+lm.dt8.2 <- glmer(Mental ~ Exercise + Drink + (1|ID) + (1|Income), 
+                  family = poisson(link = "log"), data = sub.dpm2)
+summary(lm.dt8.2)
+
+print(c(AIC(lm.dt7),AIC(lm.dt8.1),AIC(lm.dt8.2)))
+
+par(mfrow=c(1,4))
+plot(lm.dt8.1,col="blue")
+
+plot(lm.dt8.2,col="blue")
+qqnorm(resid(lm.dt8.2)) 
+
+# General health
+lm.dt9.1 <- glm.nb(Mental ~ factor(General) + Exercise + Drink - 1, data = sub.dpm2)
+summary(lm.dt9.1)
+
+lm.dt9.2 <- glmer(Mental ~ Exercise + Drink + (1|ID) + (1|General), 
+                  family = poisson(link = "log"), data = sub.dpm2)
+summary(lm.dt9.2)
+
+print(c(AIC(lm.dt7),AIC(lm.dt9.1),AIC(lm.dt9.2)))
+
+par(mfrow=c(1,4))
+plot(lm.dt9.1,col="blue")
+
+plot(lm.dt9.2,col="blue")
+qqnorm(resid(lm.dt8.2)) 
+
+# State
+lm.dt10 <- glm.nb(Mental ~ Exercise + Drink, data = sub.dpm3)
+summary(lm.dt10)
+
+lm.dt10.1 <- glm.nb(Mental ~ Location + Exercise + Drink - 1, data = sub.dpm3)
+summary(lm.dt10.1)
+
+lm.dt10.2 <- glmer(Mental ~ Exercise + Drink + (1|ID) + (1|Location), 
+                  family = poisson(link = "log"), data = sub.dpm3)
+summary(lm.dt10.2)
+
+print(c(AIC(lm.dt7),AIC(lm.dt10.1),AIC(lm.dt10.2)))
+
+par(mfrow=c(1,4))
+plot(lm.dt10.1,col="blue")
+
+plot(lm.dt10.2,col="blue")
+qqnorm(resid(lm.dt10.2)) 
+
+```
+For the other group level variables tested, the results are all similar. The multilevel model did not improve the model fitting, and the residual and quantile plots show the similar patterns, indicating the model lacks proper predictors. 
+
+Overall, the model suffered from the misfit, and this could be explained by several factors. First, one of the main reasons that all the models attempted did not work well is that the data are censored in both ends. The data include not only the excess of zero counts but also a significant number of the max counts, which is 30 days. Part of the excess zero counts had to be also arbitrarily removed to facilitate the analysis. The effect of this random selection on the regression results should be evaluated. Second, the model is overly simplified. While the EDA showed that the predictors (exercise and drink) have some correlations with the mental health measure, none of them might not be the major factor, and key predictors might have been left out. The third problem is related to the data size. The dataset includes about 420K rows, which limits the model options as well as the number of predictors considered. 
