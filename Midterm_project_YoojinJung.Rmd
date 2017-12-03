@@ -281,7 +281,7 @@ The Vuong test suggests that the zero-inflated negative binomial model is a sign
 
 
 ## Multilevel models
-The dataset includes several groups, such as by education, income, and state. Here, I will consider fitting several multilevel models with the grouped data. For multilevel models, I used a subset of the dataset (dpm) to facilitate fitting the multilevel generalized linear models. Based on the zero-inflated negative binomial model above, I assumed most of the survey participants are mentally healty and therefore randomly selected part of the zero counts. The total number of the zero counts included in this subset was determined by the ratio of the zero counts explained by the poisson distribution and the actual obsevation data.  
+The dataset includes several groups, such as by education, income, and state. Here, I considered fitting several multilevel models with the grouped data. For multilevel models, I used a subset of the dataset (dpm) to facilitate fitting the multilevel generalized linear models. Based on the zero-inflated negative binomial model above, I assumed most of the survey participants are mentally healty and therefore randomly selected part of the zero counts. The total number of the zero counts included in this subset was determined by the ratio of the zero counts explained by the poisson distribution and the actual obsevation data.  
 ```{r}
 # Let's filter zeros and randonly select part of them.
 zeros.dpm <- subset(dpm, dpm$Mental == 0)
@@ -351,7 +351,7 @@ lm.dt7: Because of the reduction of the excess zero counts, the predicted value 
 
 lm.dt7.1: The effect of education level on the prediction was separately assessed for each education group. This change also affected the coefficients for exercise and drink term. 
 
-lm.dt7.2: The intercepts are in general smaller than those in lm.dt7.1, but the slopes for exercise and drink are greater, therefore increasing the variability of the predictions. 
+lm.dt7.2: The intercepts are in general smaller than those in lm.dt7.1, but the slopes for exercise and drink are greater, therefore increasing the variability of the predictions. The variance of the randon effect for education is 0.038, indicating the group level variance is relatively minor compared to the individual level variance.
 
 As shown in AIC value comparison, the multilevel model does not improve the fitting. The residual and quantile plots also show that there are missing parameters that would better explain the observed data. Particularly, significant deviations from linearty of the observations in the Q-Q plot for lm.dt7.2 indicates non-normal residuals.
 
